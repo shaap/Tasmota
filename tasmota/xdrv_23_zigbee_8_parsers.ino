@@ -190,7 +190,7 @@ int32_t EZSP_EnergyScanComplete(int32_t res, const SBuffer &buf) {
 // Dump energu scan results
 //
 void EnergyScanResults(void) {
-  Response_P(PSTR("{\"" D_JSON_ZIGBEE_SCAN "\":["));
+  Response_P(PSTR("{\"" D_JSON_ZIGBEE_SCAN "\":{"));
   for (uint32_t i = 0; i < USE_ZIGBEE_CHANNEL_COUNT; i++) {
     int8_t energy = zigbee.energy[i];
 
@@ -210,7 +210,7 @@ void EnergyScanResults(void) {
 
     AddLog(LOG_LEVEL_INFO, PSTR(D_LOG_ZIGBEE "Channel %2d: %s"), i + USE_ZIGBEE_CHANNEL_MIN, bar_str);
   }
-  ResponseAppend_P(PSTR("]}"));
+  ResponseAppend_P(PSTR("}}"));
   MqttPublishPrefixTopicRulesProcess_P(RESULT_OR_TELE, PSTR(D_JSON_ZIGBEE_STATE));
 }
 
@@ -418,7 +418,7 @@ int32_t ZNP_Reboot(int32_t res, SBuffer &buf) {
   }
 
   Response_P(PSTR("{\"" D_JSON_ZIGBEE_STATE "\":{"
-                  "\"Status\":%d,\"Message\":\"CC2530 booted\",\"RestartReason\":\"%s\""
+                  "\"Status\":%d,\"Message\":\"CCxxxx booted\",\"RestartReason\":\"%s\""
                   ",\"MajorRel\":%d,\"MinorRel\":%d}}"),
                   ZIGBEE_STATUS_BOOT, reason_str,
                   major_rel, minor_rel);

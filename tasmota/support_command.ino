@@ -36,7 +36,7 @@ const char kTasmotaCommands[] PROGMEM = "|"  // No prefix
 #ifdef USE_DEVICE_GROUPS_SEND
   D_CMND_DEVGROUP_SEND "|"
 #endif  // USE_DEVICE_GROUPS_SEND
-  D_CMND_DEVGROUP_SHARE "|" D_CMND_DEVGROUPSTATUS "|" D_CMND_DEVGROUP_DEVICE "|"
+  D_CMND_DEVGROUP_SHARE "|" D_CMND_DEVGROUPSTATUS "|" D_CMND_DEVGROUP_TIE "|"
 #endif  // USE_DEVICE_GROUPS
   D_CMND_SENSOR "|" D_CMND_DRIVER
 #ifdef ESP32
@@ -529,9 +529,9 @@ void CmndStatus(void)
 
   if (((0 == payload) || (6 == payload)) && Settings.flag.mqtt_enabled) {  // SetOption3 - Enable MQTT
     Response_P(PSTR("{\"" D_CMND_STATUS D_STATUS6_MQTT "\":{\"" D_CMND_MQTTHOST "\":\"%s\",\"" D_CMND_MQTTPORT "\":%d,\"" D_CMND_MQTTCLIENT D_JSON_MASK "\":\"%s\",\""
-                          D_CMND_MQTTCLIENT "\":\"%s\",\"" D_CMND_MQTTUSER "\":\"%s\",\"" D_JSON_MQTT_COUNT "\":%d,\"MAX_PACKET_SIZE\":%d,\"KEEPALIVE\":%d}}"),
+                          D_CMND_MQTTCLIENT "\":\"%s\",\"" D_CMND_MQTTUSER "\":\"%s\",\"" D_JSON_MQTT_COUNT "\":%d,\"MAX_PACKET_SIZE\":%d,\"KEEPALIVE\":%d,\"SOCKET_TIMEOUT\":%d}}"),
                           SettingsText(SET_MQTT_HOST), Settings.mqtt_port, EscapeJSONString(SettingsText(SET_MQTT_CLIENT)).c_str(),
-                          TasmotaGlobal.mqtt_client, EscapeJSONString(SettingsText(SET_MQTT_USER)).c_str(), MqttConnectCount(), MQTT_MAX_PACKET_SIZE, MQTT_KEEPALIVE);
+                          TasmotaGlobal.mqtt_client, EscapeJSONString(SettingsText(SET_MQTT_USER)).c_str(), MqttConnectCount(), MQTT_MAX_PACKET_SIZE, Settings.mqtt_keepalive, Settings.mqtt_socket_timeout);
     MqttPublishPrefixTopic_P(STAT, PSTR(D_CMND_STATUS "6"));
   }
 
@@ -2071,9 +2071,14 @@ void CmndWifiPower(void)
 #ifdef USE_I2C
 void CmndI2cScan(void)
 {
-  if (TasmotaGlobal.i2c_enabled) {
+  if ((1 == XdrvMailbox.index) && (TasmotaGlobal.i2c_enabled)) {
     I2cScan(TasmotaGlobal.mqtt_data, sizeof(TasmotaGlobal.mqtt_data));
   }
+#ifdef ESP32
+  if ((2 == XdrvMailbox.index) && (TasmotaGlobal.i2c_enabled_2)) {
+    I2cScan(TasmotaGlobal.mqtt_data, sizeof(TasmotaGlobal.mqtt_data), 1);
+  }
+#endif
 }
 
 void CmndI2cDriver(void)
@@ -2138,7 +2143,13 @@ void CmndDevGroupTie(void)
     if (XdrvMailbox.data_len > 0) {
       Settings.device_group_tie[XdrvMailbox.index - 1] = XdrvMailbox.payload;
     }
-    ResponseCmndIdxNumber(Settings.device_group_tie[XdrvMailbox.index - 1]);
+    char * ptr = TasmotaGlobal.mqtt_data;
+    *ptr++ = '{';
+    for (uint32_t i = 0; i < MAX_DEV_GROUP_NAMES; i++) {
+      ptr += sprintf(ptr, PSTR("\"%s%u\":%u,"), D_CMND_DEVGROUP_TIE, i + 1, Settings.device_group_tie[i]);
+    }
+    *(ptr - 1) = '}';
+    *ptr = 0;
   }
 }
 #endif  // USE_DEVICE_GROUPS

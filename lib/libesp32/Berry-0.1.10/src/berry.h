@@ -273,6 +273,14 @@ typedef void(*bntvhook)(bvm *vm, bhookinfo *info);
   #define be_assert(expr)       ((void)0)
 #endif
 
+/* Observability hook */
+
+typedef void(*beobshook)(bvm *vm, int event, ...);
+enum beobshookevents {
+  BE_OBS_GC_START,        // start of GC, arg = allocated size
+  BE_OBS_GC_END,          // end of GC, arg = allocated size
+};
+
 /* FFI functions */
 #define be_writestring(s)       be_writebuffer((s), strlen(s))
 #define be_writenewline()       be_writebuffer("\n", 1)
@@ -393,6 +401,7 @@ BERRY_API int be_pcall(bvm *vm, int argc);
 BERRY_API void be_exit(bvm *vm, int status);
 
 /* exception APIs */
+__attribute__((noreturn))
 BERRY_API void be_raise(bvm *vm, const char *except, const char *msg);
 BERRY_API int be_getexcept(bvm *vm, int code);
 BERRY_API void be_dumpvalue(bvm *vm, int index);
@@ -406,6 +415,9 @@ BERRY_API void be_regclass(bvm *vm, const char *name, const bnfuncinfo *lib);
 BERRY_API bvm* be_vm_new(void);
 BERRY_API void be_vm_delete(bvm *vm);
 
+/* Observability hook */
+BERRY_API void be_set_obs_hook(bvm *vm, beobshook hook);
+
 /* code load APIs */
 BERRY_API int be_loadbuffer(bvm *vm,
     const char *name, const char *buffer, size_t length);
@@ -416,6 +428,10 @@ BERRY_API int be_savecode(bvm *vm, const char *name);
 /* module path list APIs */
 BERRY_API void be_module_path(bvm *vm);
 BERRY_API void be_module_path_set(bvm *vm, const char *path);
+
+/* bytes operations */
+BERRY_API void be_pushbytes(bvm *vm, const void *buf, size_t len);
+BERRY_API const void *be_tobytes(bvm *vm, int index, size_t *len);
 
 /* registry operation */
 BERRY_API int be_register(bvm *vm, int index);

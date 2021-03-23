@@ -64,6 +64,12 @@
  **/
 #define BE_DEBUG_VAR_INFO               0
 
+/* Macro: BE_USE_OBSERVABILITY_HOOK
+ * Use the obshook function to report low-level actions.
+ * Default: 0
+ **/
+#define BE_USE_OBSERVABILITY_HOOK       1
+
 /* Macro: BE_STACK_TOTAL_MAX
  * Set the maximum total stack size.
  * Default: 20000
@@ -156,11 +162,27 @@
  * are not required.
  * The default is to use the functions in the standard library.
  **/
+#ifdef USE_BERRY_PSRAM
+#ifdef __cplusplus
+extern "C" {
+#endif
+  extern void *berry_malloc(uint32_t size);
+  extern void *berry_realloc(void *ptr, size_t size);
+#ifdef __cplusplus
+}
+#endif
+  #define BE_EXPLICIT_MALLOC              special_malloc
+  #define BE_EXPLICIT_REALLOC             special_realloc
+#else
+  #define BE_EXPLICIT_MALLOC              malloc
+  #define BE_EXPLICIT_REALLOC             realloc
+#endif // USE_BERRY_PSRAM
+
 #define BE_EXPLICIT_ABORT               abort
 #define BE_EXPLICIT_EXIT                exit
-#define BE_EXPLICIT_MALLOC              malloc
+// #define BE_EXPLICIT_MALLOC              malloc
 #define BE_EXPLICIT_FREE                free
-#define BE_EXPLICIT_REALLOC             realloc
+// #define BE_EXPLICIT_REALLOC             realloc
 
 /* Macro: be_assert
  * Berry debug assertion. Only enabled when BE_DEBUG is active.

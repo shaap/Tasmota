@@ -1,7 +1,7 @@
 /*
   it-IT.h - localization for Italian - Italy for Tasmota
 
-  Copyright (C) 2021  Gennaro Tortone - some mods by Antonio Fragola - Updated by bovirus - rev. 27.02.2021
+  Copyright (C) 2021  Gennaro Tortone, Antonio Fragola, Bovirus and Adrian Scillato
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -28,11 +28,11 @@
  * Use online command StateText to translate ON, OFF, HOLD and TOGGLE.
  * Use online command Prefix to translate cmnd, stat and tele.
  *
- * Updated until v6.0.0a
+ * Last update - 9.3.1.1 (17.03.2021)
 \*********************************************************************/
 
 #define LANGUAGE_MODULE_NAME         // Enable to display "Module Generic" (ie Spanish), Disable to display "Generic Module" (ie English)
-
+// https://www.science.co.il/language/Locale-codes.php
 #define LANGUAGE_LCID 1040
 // HTML (ISO 639-1) Language Code
 #define D_HTML_LANGUAGE "it"
@@ -585,6 +585,10 @@
 #define D_StL1L2L3 "Corrente L1+L2+L3"
 #define D_SpL1L2L3 "Tensione L1+L2+L3/3"
 
+// xsns_86_tfminiplus.ino
+#define D_SIGNALSTRENGTH "Signal Strength"
+#define D_CHIPTEMPERATURE "Chip Temperature"
+
 // tasmota_template.h - keep them as short as possible to be able to fit them in GUI drop down box
 #define D_SENSOR_NONE          "Nessuno"
 #define D_SENSOR_USER          "Utente"
@@ -643,6 +647,9 @@
 #define D_SENSOR_TM1638_CLK    "TM1638 - CLK"
 #define D_SENSOR_TM1638_DIO    "TM1638 - DIO"
 #define D_SENSOR_TM1638_STB    "TM1638 - STB"
+#define D_SENSOR_MAX7219_DIN    "MAX7219 - DIN"
+#define D_SENSOR_MAX7219_CS    "MAX7219 - CS"
+#define D_SENSOR_MAX7219_CLK    "MAX7219 - CLK"
 #define D_SENSOR_HX711_SCK     "HX711 - SCK"
 #define D_SENSOR_HX711_DAT     "HX711 - DAT"
 #define D_SENSOR_FTC532        "FTC532"
@@ -673,9 +680,9 @@
 #define D_SENSOR_HJL_CF        "BL0937 - CF"
 #define D_SENSOR_MCP39F5_TX    "MCP39F5 - TX"
 #define D_SENSOR_MCP39F5_RX    "MCP39F5 - RX"
-#define D_SENSOR_MCP39F5_RST   "MCP39F5 - Reset"
-#define D_SENSOR_CSE7761_TX    "CSE7761 - Tx"
-#define D_SENSOR_CSE7761_RX    "CSE7761 - Rx"
+#define D_SENSOR_MCP39F5_RST   "MCP39F5 - RESET"
+#define D_SENSOR_CSE7761_TX    "CSE7761 - TX"
+#define D_SENSOR_CSE7761_RX    "CSE7761 - RX"
 #define D_SENSOR_CSE7766_TX    "CSE7766 - TX"
 #define D_SENSOR_CSE7766_RX    "CSE7766 - RX"
 #define D_SENSOR_PN532_TX      "PN532 - TX"
@@ -696,10 +703,10 @@
 #define D_SENSOR_HRE_DATA      "HRE - Dati"
 #define D_SENSOR_ADE7953_IRQ   "ADE7953 - IRQ"
 #define D_SENSOR_BUZZER        "Cicalino"
-#define D_SENSOR_OLED_RESET    "OLED - Reset"
+#define D_SENSOR_OLED_RESET    "OLED - RESET"
 #define D_SENSOR_ZIGBEE_TXD    "Zigbee - TX"
 #define D_SENSOR_ZIGBEE_RXD    "Zigbee - RX"
-#define D_SENSOR_ZIGBEE_RST    "Zigbee - Reset"
+#define D_SENSOR_ZIGBEE_RST    "Zigbee - RESET"
 #define D_SENSOR_SOLAXX1_TX    "SolaxX1 - TX"
 #define D_SENSOR_SOLAXX1_RX    "SolaxX1 - RX"
 #define D_SENSOR_IBEACON_TX    "iBeacon - TX"
@@ -797,6 +804,14 @@
 #define D_SENSOR_WIEGAND_D1    "Wiegand - D1"
 #define D_SENSOR_NEOPOOL_TX    "NeoPool - TX"
 #define D_SENSOR_NEOPOOL_RX    "NeoPool - RX"
+#define D_SENSOR_VL53L0X_XSHUT "VL53L0X XSHUT"
+#define D_NEW_ADDRESS          "Imposta indirizzo a"
+#define D_OUT_OF_RANGE         "Fuori limite"
+#define D_SENSOR_DETECTED      "rilevato"
+#define D_SENSOR_TFMINIPLUS_TX  "TFmini+ TX"
+#define D_SENSOR_TFMINIPLUS_RX  "TFmini+ RX"
+#define D_SENSOR_ZEROCROSS     "ZC Pulse"
+
 
 // Units
 #define D_UNIT_AMPERE "A"
@@ -843,6 +858,10 @@
 #define D_UNIT_WATT "W"
 #define D_UNIT_WATTHOUR "Wh"
 #define D_UNIT_WATT_METER_QUADRAT "W/m²"
+
+#define D_NEW_ADDRESS          "Setting address to"
+#define D_OUT_OF_RANGE         "Out of Range"
+#define D_SENSOR_DETECTED      "detected"
 
 //SDM220, SDM120, SDM72, LE01MR
 #define D_EXPORT_POWER    "Potenza esportata"

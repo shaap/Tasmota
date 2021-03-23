@@ -56,7 +56,9 @@ keywords if then else endif, or, and are better readable for beginners (others m
 #define MAXFILT 5
 #endif
 #define SCRIPT_SVARSIZE 20
+#ifndef SCRIPT_MAXSSIZE
 #define SCRIPT_MAXSSIZE 48
+#endif
 #define SCRIPT_EOL '\n'
 #define SCRIPT_FLOAT_PRECISION 2
 #define PMEM_SIZE sizeof(Settings.script_pram)
@@ -65,8 +67,8 @@ keywords if then else endif, or, and are better readable for beginners (others m
 
 #define MAX_SARRAY_NUM 32
 
-//uint32_t EncodeLightId(uint8_t relay_id);
-//uint32_t DecodeLightId(uint32_t hue_id);
+uint32_t EncodeLightId(uint8_t relay_id);
+uint32_t DecodeLightId(uint32_t hue_id);
 
 #define SPECIAL_EEPMODE_SIZE 6200
 
@@ -201,10 +203,12 @@ void alt_eeprom_readBytes(uint32_t adr, uint32_t len, uint8_t *buf) {
 
 
 // offsets epoch readings by 1.1.2019 00:00:00 to fit into float with second resolution
+#ifndef EPOCH_OFFSET
 #define EPOCH_OFFSET 1546300800
+#endif
 
 enum {OPER_EQU=1,OPER_PLS,OPER_MIN,OPER_MUL,OPER_DIV,OPER_PLSEQU,OPER_MINEQU,OPER_MULEQU,OPER_DIVEQU,OPER_EQUEQU,OPER_NOTEQU,OPER_GRTEQU,OPER_LOWEQU,OPER_GRT,OPER_LOW,OPER_PERC,OPER_XOR,OPER_AND,OPER_OR,OPER_ANDEQU,OPER_OREQU,OPER_XOREQU,OPER_PERCEQU};
-enum {SCRIPT_LOGLEVEL=1,SCRIPT_TELEPERIOD,SCRIPT_EVENT_HANDLED,SML_JSON_ENABLE};
+enum {SCRIPT_LOGLEVEL=1,SCRIPT_TELEPERIOD,SCRIPT_EVENT_HANDLED,SML_JSON_ENABLE,SCRIPT_EPOFFS};
 
 
 #ifdef USE_UFILESYS
@@ -219,6 +223,7 @@ extern FS *ufsp;
 
 #endif // USE_UFILESYS
 
+extern "C" void homekit_main(char *, uint32_t);
 
 #ifdef SUPPORT_MQTT_EVENT
   #include <LinkedList.h>                 // Import LinkedList library
@@ -241,7 +246,7 @@ extern VButton *buttons[MAX_TOUCH_BUTTONS];
 #endif
 
 typedef union {
-#ifdef USE_SCRIPT_GLOBVARS
+#if defined(USE_SCRIPT_GLOBVARS) || defined(USE_HOMEKIT)
   uint16_t data;
 #else
   uint8_t data;
@@ -257,6 +262,9 @@ typedef union {
     uint8_t constant : 1;
 #ifdef USE_SCRIPT_GLOBVARS
     uint8_t global : 1;
+#endif
+#ifdef USE_SCRIPT_GLOBVARS
+    uint8_t hchanged : 1;
 #endif
   };
 } SCRIPT_TYPE;
@@ -413,6 +421,11 @@ struct SCRIPT_MEM {
 #ifdef USE_BUTTON_EVENT
     int8_t script_button[MAX_KEYS];
 #endif //USE_BUTTON_EVENT
+
+#ifdef USE_HOMEKIT
+    bool homekit_running = false;
+#endif // USE_HOMEKIT
+    uint32_t epoch_offset = EPOCH_OFFSET;
 } glob_script_mem;
 
 
@@ -476,12 +489,34 @@ void ScriptEverySecond(void) {
       }
     }
     Run_Scripter(">S", 2, 0);
+
+#ifdef USE_HOMEKIT
+    if (glob_script_mem.homekit_running == false) {
+      uint8_t homekit_found = Run_Scripter(">h", -2, 0);
+      if (homekit_found == 99) {
+        if (!TasmotaGlobal.global_state.wifi_down) {
+          homekit_main(glob_script_mem.section_ptr, 0);
+          glob_script_mem.homekit_running = true;
+        }
+      }
+    }
+#endif // USE_HOMEKIT
+
   }
 }
 
 void RulesTeleperiod(void) {
   if (bitRead(Settings.rule_enabled, 0) && TasmotaGlobal.mqtt_data[0]) Run_Scripter(">T", 2, TasmotaGlobal.mqtt_data);
 }
+
+void SetChanged(uint32_t index) {
+  glob_script_mem.type[index].bits.changed = 1;
+#ifdef USE_HOMEKIT
+  glob_script_mem.type[index].bits.hchanged = 1;
+#endif
+//AddLog(LOG_LEVEL_INFO, PSTR("Change: %d"), index);
+}
+
 
 #define SCRIPT_SKIP_SPACES while (*lp==' ' || *lp=='\t') lp++;
 #define SCRIPT_SKIP_EOL while (*lp==SCRIPT_EOL) lp++;
@@ -741,7 +776,7 @@ char *script;
 
     script_mem_size += 16;
     uint8_t *script_mem;
-    script_mem = (uint8_t*)calloc(script_mem_size, 1);
+    script_mem = (uint8_t*)special_malloc(script_mem_size);
     if (!script_mem) {
       if (imemptr) free(imemptr);
       return -4;
@@ -994,7 +1029,7 @@ void Script_PollUdp(void) {
           if (res) {
             // mark changed
             glob_script_mem.last_udp_ip = glob_script_mem.Script_PortUdp.remoteIP();
-            glob_script_mem.type[index].bits.changed = 1;
+            SetChanged(index);
             if (glob_script_mem.glob_script == 99) {
               Run_Scripter(">G", 2, 0);
             }
@@ -1680,7 +1715,7 @@ char *isvar(char *lp, uint8_t *vtype, struct T_INDEX *tind, float *fp, char *sp,
             } else {
               if (fp) {
                 if (!strncmp(vn.c_str(), "Epoch", 5)) {
-                  *fp = atoi(str_value) - (uint32_t)EPOCH_OFFSET;
+                  *fp = atoi(str_value) - (uint32_t)glob_script_mem.epoch_offset;
                 } else {
                   *fp = CharToFloat((char*)str_value);
                 }
@@ -1846,8 +1881,13 @@ chknext:
         break;
       case 'e':
         if (!strncmp(vname, "epoch", 5)) {
-          fvar = UtcTime() - (uint32_t)EPOCH_OFFSET;
+          fvar = UtcTime() - (uint32_t)glob_script_mem.epoch_offset;
           goto exit;
+        }
+        if (!strncmp(vname, "epoffs", 6)) {
+          fvar = (uint32_t)glob_script_mem.epoch_offset;
+          tind->index = SCRIPT_EPOFFS;
+          goto exit_settable;
         }
         if (!strncmp(vname, "eres", 4)) {
           fvar = glob_script_mem.event_handeled;
@@ -2135,7 +2175,7 @@ chknext:
           if (ef) {
             uint16_t fsiz = ef.size();
             if (fsiz<2048) {
-              char *script = (char*)calloc(fsiz + 16, 1);
+              char *script = (char*)special_malloc(fsiz + 16);
               if (script) {
                 ef.read((uint8_t*)script,fsiz);
                 execute_script(script);
@@ -2469,6 +2509,24 @@ chknext:
           goto exit;
         }
 #endif //USE_LIGHT
+
+#ifdef USE_HOMEKIT
+        if (!strncmp(vname, "hki(", 4)) {
+          if (!TasmotaGlobal.global_state.wifi_down) {
+            // erase nvs
+            lp = GetNumericArgument(lp + 4, OPER_EQU, &fvar, gv);
+
+            homekit_main(0, fvar);
+            if (fvar >= 98) {
+              glob_script_mem.homekit_running == false;
+            }
+
+          }
+          lp++;
+          len = 0;
+          goto exit;
+        }
+#endif
         break;
       case 'i':
         if (!strncmp(vname, "int(", 4)) {
@@ -3529,6 +3587,96 @@ char *ForceStringVar(char *lp, char *dstr) {
   return lp;
 }
 
+#ifdef USE_HOMEKIT
+extern "C" {
+  uint32_t Ext_UpdVar(char *vname, float *fvar, uint32_t mode) {
+    return UpdVar(vname, fvar, mode);
+  }
+  void Ext_toLog(char *str) {
+    toLog(str);
+  }
+
+  char *GetFName(void) {
+    return SettingsText(SET_FRIENDLYNAME1);
+  }
+}
+
+int32_t UpdVar(char *vname, float *fvar, uint32_t mode) {
+  uint8_t type;
+  uint8_t index;
+  if (*vname == '@') {
+      vname++;
+      type = *vname;
+      vname++;
+      index = (*vname & 0x0f);
+      if (index < 1) index = 1;
+      if (index > 9) index = 9;
+      switch (type) {
+        case 'p':
+          if (mode) {
+            // set power
+            ExecuteCommandPower(index, *fvar, SRC_BUTTON);
+            return 0;
+          } else {
+            // read power
+            *fvar = bitRead(TasmotaGlobal.power,  index - 1);
+            return 1;
+          }
+          break;
+        case 's':
+          *fvar = SwitchLastState(index - 1);
+          return 1;
+          break;
+        case 'b':
+          *fvar = Button.last_state[index - 1];
+          return 1;
+          break;
+      }
+      return 0;
+  }
+  struct T_INDEX ind;
+  uint8_t vtype;
+  float res = *fvar;
+  isvar(vname, &vtype, &ind, fvar, 0, 0);
+  if (vtype != VAR_NV) {
+    // found variable as result
+    if (vtype == NUM_RES || (vtype & STYPE) == 0) {
+      if (mode) {
+        // set var
+        //AddLog(LOG_LEVEL_DEBUG, PSTR("write from homekit: %s - %d"), vname, (uint32_t)res);
+        index = glob_script_mem.type[ind.index].index;
+        glob_script_mem.fvars[index] = res;
+        glob_script_mem.type[ind.index].bits.changed = 1;
+#ifdef USE_SCRIPT_GLOBVARS
+        if (glob_script_mem.type[ind.index].bits.global) {
+          script_udp_sendvar(vname, &res, 0);
+        }
+#endif //USE_SCRIPT_GLOBVARS
+        return 0;
+      } else {
+        // get var
+        //index = glob_script_mem.type[ind.index].index;
+        int32_t ret = glob_script_mem.type[ind.index].bits.hchanged;
+        glob_script_mem.type[ind.index].bits.hchanged = 0;
+        //AddLog(LOG_LEVEL_DEBUG, PSTR("read from homekit: %s - %d - %d"), vname, (uint32_t)*fvar, ret);
+        return ret;
+      }
+    } else {
+      //  break;
+    }
+  }
+  return -1;
+}
+
+
+extern "C" {
+  void Ext_Replace_Cmd_Vars(char *srcbuf, uint32_t srcsize, char *dstbuf, uint32_t dstsize) {
+    Replace_Cmd_Vars(srcbuf, srcsize, dstbuf, dstsize);
+  }
+}
+
+#endif // USE_HOMEKIT
+
 // replace vars in cmd %var%
 void Replace_Cmd_Vars(char *srcbuf, uint32_t srcsize, char *dstbuf, uint32_t dstsize) {
     char *cp;
@@ -3628,7 +3776,6 @@ void toLog(const char *str) {
   if (!str) return;
   AddLog(LOG_LEVEL_INFO, str);
 }
-
 
 void toLogN(const char *cp, uint8_t len) {
   if (!cp) return;
@@ -4501,7 +4648,7 @@ int16_t Run_script_sub(const char *type, int8_t tlen, struct GVARS *gv) {
                               break;
                       }
                       // var was changed
-                      glob_script_mem.type[globvindex].bits.changed = 1;
+                      SetChanged(globvindex);
 #ifdef USE_SCRIPT_GLOBVARS
                       if (glob_script_mem.type[globvindex].bits.global) {
                         script_udp_sendvar(varname, dfvar, 0);
@@ -4527,6 +4674,9 @@ int16_t Run_script_sub(const char *type, int8_t tlen, struct GVARS *gv) {
                             break;
                           case SCRIPT_EVENT_HANDLED:
                             glob_script_mem.event_handeled = *dfvar;
+                            break;
+                          case SCRIPT_EPOFFS:
+                            glob_script_mem.epoch_offset = *dfvar;
                             break;
 #if defined(USE_SML_M) && defined (USE_SML_SCRIPT_CMD)
                           case SML_JSON_ENABLE:
@@ -4556,7 +4706,7 @@ int16_t Run_script_sub(const char *type, int8_t tlen, struct GVARS *gv) {
 
                     if (!glob_script_mem.var_not_found) {
                       // var was changed
-                      glob_script_mem.type[globvindex].bits.changed = 1;
+                      SetChanged(globvindex);
 #ifdef USE_SCRIPT_GLOBVARS
                       if (glob_script_mem.type[globvindex].bits.global) {
                         script_udp_sendvar(varname, 0, str);
@@ -5554,7 +5704,7 @@ void Script_Handle_Hue(String *path) {
         glob_script_mem.fvars[hue_script[index].index[0] - 1] = 1;
           response.replace("{re", "true");
       }
-      glob_script_mem.type[hue_script[index].vindex[0]].bits.changed = 1;
+      SetChanged(hue_script[index].vindex[0]);
       resp = true;
     }
 
@@ -5570,7 +5720,7 @@ void Script_Handle_Hue(String *path) {
       response.replace("{cm", "bri");
       response.replace("{re", String(tmp));
       glob_script_mem.fvars[hue_script[index].index[1] - 1] = bri;
-      glob_script_mem.type[hue_script[index].vindex[1]].bits.changed = 1;
+      SetChanged(hue_script[index].vindex[1]);
       resp = true;
     }
 
@@ -5593,9 +5743,9 @@ void Script_Handle_Hue(String *path) {
       response.replace("{cm", "xy");
       response.replace("{re", "[" + x_str + "," + y_str + "]");
       glob_script_mem.fvars[hue_script[index].index[2]-1] = hue;
-      glob_script_mem.type[hue_script[index].vindex[2]].bits.changed = 1;
+      SetChanged(hue_script[index].vindex[2]);
       glob_script_mem.fvars[hue_script[index].index[3]-1] = sat;
-      glob_script_mem.type[hue_script[index].vindex[3]].bits.changed = 1;
+      SetChanged(hue_script[index].vindex[3]);
       resp = true;
     }
 
@@ -5611,7 +5761,7 @@ void Script_Handle_Hue(String *path) {
       response.replace("{cm", "hue");
       response.replace("{re", String(tmp));
       glob_script_mem.fvars[hue_script[index].index[2] - 1] = hue;
-      glob_script_mem.type[hue_script[index].vindex[2]].bits.changed = 1;
+      SetChanged(hue_script[index].vindex[2]);
       resp = true;
     }
 
@@ -5626,7 +5776,7 @@ void Script_Handle_Hue(String *path) {
       response.replace("{cm", "sat");
       response.replace("{re", String(tmp));
       glob_script_mem.fvars[hue_script[index].index[3] - 1] = sat;
-      glob_script_mem.type[hue_script[index].vindex[3]].bits.changed = 1;
+      SetChanged(hue_script[index].vindex[3]);
       resp = true;
     }
 
@@ -5639,7 +5789,7 @@ void Script_Handle_Hue(String *path) {
       response.replace("{cm", "ct");
       response.replace("{re", String(ct));
       glob_script_mem.fvars[hue_script[index].index[4] - 1] = ct;
-      glob_script_mem.type[hue_script[index].vindex[4]].bits.changed = 1;
+      SetChanged(hue_script[index].vindex[4]);
       resp = true;
     }
     response += "]";
@@ -5993,7 +6143,7 @@ bool ScriptMqttData(void)
         char sbuffer[128];
 
         if (!strncmp(lkey.c_str(), "Epoch", 5)) {
-          uint32_t ep = atoi(value.c_str()) - (uint32_t)EPOCH_OFFSET;
+          uint32_t ep = atoi(value.c_str()) - (uint32_t)glob_script_mem.epoch_offset;
           snprintf_P(sbuffer, sizeof(sbuffer), PSTR(">%s=%d\n"), event_item.Event.c_str(), ep);
         } else {
           snprintf_P(sbuffer, sizeof(sbuffer), PSTR(">%s=\"%s\"\n"), event_item.Event.c_str(), value.c_str());
@@ -6214,7 +6364,8 @@ void ScriptGetSDCard(void) {
   if (!HttpCheckPriviledgedAccess()) { return; }
 
   String stmp = Webserver->uri();
-  char *cp = strstr_P(stmp.c_str(), PSTR("/sdc/"));
+
+  char *cp = strstr_P(stmp.c_str(), PSTR("/ufs/"));
 //  if (cp) Serial.printf(">>>%s\n",cp);
   if (cp) {
 #ifdef ESP32
@@ -6222,13 +6373,15 @@ void ScriptGetSDCard(void) {
 #else
     cp += 5;
 #endif
-    if (strstr_P(cp, PSTR("scrdmp.bmp"))) {
-      SendFile(cp);
-      return;
-    } else {
-      if (ufsp->exists(cp)) {
+    if (ufsp) {
+      if (strstr_P(cp, PSTR("scrdmp.bmp"))) {
         SendFile(cp);
         return;
+      } else {
+        if (ufsp->exists(cp)) {
+          SendFile(cp);
+          return;
+        }
       }
     }
   }
@@ -6249,7 +6402,6 @@ char buff[512];
 #ifdef USE_DISPLAY_DUMP
   char *sbmp = strstr_P(fname, PSTR("scrdmp.bmp"));
   if (sbmp) {
-    mime = "image/bmp";
     sflg = 1;
   }
 #endif // USE_DISPLAY_DUMP
@@ -6276,7 +6428,7 @@ char buff[512];
     #define infoHeaderSize 40
     if (buffer) {
       uint8_t *bp = buffer;
-      uint8_t *lbuf = (uint8_t*)calloc(Settings.display_width + 2, 3);
+      uint8_t *lbuf = (uint8_t*)special_malloc(Settings.display_width + 2);
       uint8_t *lbp;
       uint8_t fileHeader[fileHeaderSize];
       createBitmapFileHeader(Settings.display_height , Settings.display_width , fileHeader);
@@ -7392,7 +7544,6 @@ int32_t http_req(char *host, char *request) {
 #include <WiFiClientSecure.h>
 #endif //ESP8266
 
-
 // get tesla powerwall info page json string
 uint32_t call2https(const char *host, const char *path) {
   if (TasmotaGlobal.global_state.wifi_down) return 1;
@@ -7537,7 +7688,7 @@ bool Xdrv10(uint8_t function)
         // we have a file system
         AddLog(LOG_LEVEL_INFO,PSTR("UFILESYSTEM OK!"));
         char *script;
-        script = (char*)calloc(UFSYS_SIZE + 4, 1);
+        script = (char*)special_malloc(UFSYS_SIZE + 4);
         if (!script) break;
         glob_script_mem.script_ram = script;
         glob_script_mem.script_size = UFSYS_SIZE;
@@ -7708,6 +7859,10 @@ bool Xdrv10(uint8_t function)
             Webserver->on("/sfd", ScriptFullWebpage);
         }
 #endif // SCRIPT_FULL_WEBPAGE
+
+#ifdef USE_UFILESYS
+        Webserver->onNotFound(ScriptGetSDCard);
+#endif // USE_UFILESYS
       }
       break;
 #endif // USE_SCRIPT_WEB_DISPLAY
@@ -7716,7 +7871,6 @@ bool Xdrv10(uint8_t function)
       Webserver->on("/ta",HTTP_POST, HandleScriptTextareaConfiguration);
       Webserver->on("/exs", HTTP_POST,[]() { Webserver->sendHeader("Location","/exs");Webserver->send(303);}, script_upload_start);
       Webserver->on("/exs", HTTP_GET, ScriptExecuteUploadSuccess);
-      break;
 #endif // USE_WEBSERVER
     case FUNC_SAVE_BEFORE_RESTART:
       if (bitRead(Settings.rule_enabled, 0)) {
@@ -7770,7 +7924,6 @@ bool Xdrv10(uint8_t function)
   }
   return result;
 }
-
 
 #endif  // Do not USE_RULES
 #endif  // USE_SCRIPT
